@@ -8,7 +8,7 @@ import json
 
 #GRID_SHAPE = (18, 29) # 19x30 chessboard
 GRID_SHAPE = (9, 16) # 10x17 
-vasen_dir = r"calibration\10x17_10mm\Basler 60gc"
+vasen_dir = r"SeAMK_Vision_Project\calibration\10x17_10mm\Hikrobot"
 
 # 7.5mm checker size
 #ret, mtx, dist, rvecs, tvecs, newcameramtx, roi = calibrate_with_img_set(vasen_dir, GRID_SHAPE, 7.5)#, plot_result=True)
@@ -16,7 +16,7 @@ vasen_dir = r"calibration\10x17_10mm\Basler 60gc"
 #10mm checker size
 ret, mtx, dist, rvecs, tvecs, newcameramtx, roi = calibrate_with_img_set(vasen_dir, GRID_SHAPE, 10)#, plot_result=True)
 
-img = cv2.imread(r"calibration\10x17_10mm\Basler 60gc\1_1777462831180.jpg")
+img = cv2.imread(r"SeAMK_Vision_Project\calibration\10x17_10mm\Hikrobot\1_1778069083676.jpg")
 
 img_ud = undistort_image(img, mtx, dist, newcameramtx)
 
@@ -32,7 +32,7 @@ with open("camera_1_calibration.json", "w") as f:
 
 print("Intrinsic Parameters save as file camera_1_calibration.json!")
 
-img = cv2.imread(r"calibration\10x17_10mm\Basler 60gc\1_1777462831180.jpg")
+img = cv2.imread(r"SeAMK_Vision_Project\calibration\10x17_10mm\Hikrobot\1_1778069083676.jpg")
 
 if img is not None:
     img_ud = undistort_image(img, mtx, dist, newcameramtx)

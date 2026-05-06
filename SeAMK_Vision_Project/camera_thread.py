@@ -92,6 +92,16 @@ class CameraThread(QThread):
 
         # 3. ACQUISITION AND IMAGE PROCESSING LOOP
         try:
+            try:
+                if not self.ia.is_acquiring(): 
+                    self.ia.remote_device.node_map.BinningHorizontal.value = "X2"
+                    self.ia.remote_device.node_map.BinningVertical.value = "X2"
+            except:
+                try:
+                    self.ia.remote_device.node_map.BinningHorizontal.value = 2
+                except Exception as e:
+                    print(f"Cannot set Binning: {e}")
+                    
             self.ia.start()
             while self._run_flag:
                 try:

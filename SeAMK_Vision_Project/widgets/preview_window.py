@@ -131,28 +131,35 @@ class PreviewWindow(QGroupBox):
                 self.global_dir_signal.emit(self.config['save_dir'])
 
     def open_fullscreen(self):
-        self.fs_viewer = FullscreenViewer(self)
+        # Tạo cửa sổ rời với tiêu đề là tên Camera
+        self.fs_viewer = FullscreenViewer(parent=None, title=f"Focus: {self.info.model}")
+        
         if hasattr(self, 'camera_thread') and self.camera_thread is not None:
-            # 1. Enable Full Resolution output
             self.camera_thread.set_full_res(True)
-            # 2. Trigger Focus Mode (Disable bandwidth for other cameras)
-            self.focus_mode_signal.emit(self, True)
-            
-            self.camera_thread.change_pixmap_signal.connect(self.fs_viewer.update_image, Qt.QueuedConnection)
-            
-            # Revert settings when fullscreen window is closed
+            self.camera_thread.change_pixmap_signal.connect(self.update_image_to_viewer, Qt.QueuedConnection)
             self.fs_viewer.finished.connect(self.close_fullscreen)
         
         self.fs_viewer.show() 
 
+    def update_image_to_viewer(self, img_data):
+        if hasattr(self, 'fs_viewer') and self.fs_viewer is not None:
+            try:
+                if self.fs_viewer.isVisible():
+                    self.fs_viewer.update_image(img_data)
+            except (AttributeError, RuntimeError):
+                self.fs_viewer = None 
+
     def close_fullscreen(self):
         if hasattr(self, 'camera_thread') and self.camera_thread is not None:
-            # 1. Disconnect the high-res signal
-            self.camera_thread.change_pixmap_signal.disconnect(self.fs_viewer.update_image)
-            # 2. Notify other cameras to resume bandwidth usage
-            self.focus_mode_signal.emit(self, False)
-            # 3. Revert current camera back to 400x300 preview mode
+            try:
+                self.camera_thread.change_pixmap_signal.disconnect(self.update_image_to_viewer)
+            except Exception:
+                pass
             self.camera_thread.set_full_res(False)
+
+        if hasattr(self, 'fs_viewer') and self.fs_viewer is not None:
+            self.fs_viewer.close()
+            self.fs_viewer = None
 
     def on_sync_changed(self, state):
         self.sync_toggled_signal.emit(self.sync_cb.isChecked())
@@ -226,8 +233,6 @@ class PreviewWindow(QGroupBox):
             pix = QtGui.QPixmap.fromImage(qt_img)
             self.image_label.setPixmap(pix)
             
-            if hasattr(self, 'fs_viewer') and self.fs_viewer.isVisible():
-                self.fs_viewer.update_image(preview_rgb) # Updated to pass ndarray or qt_img based on viewer logic
         except Exception as e:
             print(f"Display error: {e}")
 
