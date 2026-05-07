@@ -8,7 +8,7 @@ import json
 
 #GRID_SHAPE = (18, 29) # 19x30 chessboard
 GRID_SHAPE = (9, 16) # 10x17 
-vasen_dir = r"SeAMK_Vision_Project\calibration\10x17_10mm\Basler 60gm"
+vasen_dir = r"D:\SeAMK_Vision_Project-master\SeAMK_Vision_Project\calibration\10x17_10mm\intrinsics_img_sets\Basler 60gc"
 
 # 7.5mm checker size
 #ret, mtx, dist, rvecs, tvecs, newcameramtx, roi = calibrate_with_img_set(vasen_dir, GRID_SHAPE, 7.5)#, plot_result=True)
@@ -16,7 +16,7 @@ vasen_dir = r"SeAMK_Vision_Project\calibration\10x17_10mm\Basler 60gm"
 #10mm checker size
 ret, mtx, dist, rvecs, tvecs, newcameramtx, roi = calibrate_with_img_set(vasen_dir, GRID_SHAPE, 10)#, plot_result=True)
 
-img = cv2.imread(r"SeAMK_Vision_Project\calibration\10x17_10mm\Basler 60gm\1_1778069864521.jpg")
+img = cv2.imread(r"D:\SeAMK_Vision_Project-master\SeAMK_Vision_Project\calibration\10x17_10mm\intrinsics_img_sets\Basler 60gc\1_intrinsics_60gc.jpg")
 
 img_ud = undistort_image(img, mtx, dist, newcameramtx)
 
@@ -27,12 +27,12 @@ calib_data = {
     "roi": roi
 }
 
-with open("camera_1_calibration.json", "w") as f:
+with open("intrinsics_60gc_calibration.json", "w") as f:
     json.dump(calib_data, f, indent=4)
 
-print("Intrinsic Parameters save as file camera_1_calibration.json!")
+print("Intrinsic Parameters save as file intrinsics_60gc_calibration.json!")
 
-img = cv2.imread(r"SeAMK_Vision_Project\calibration\10x17_10mm\Basler 60gm\1_1778069864521.jpg")
+img = cv2.imread(r"D:\SeAMK_Vision_Project-master\SeAMK_Vision_Project\calibration\10x17_10mm\intrinsics_img_sets\Basler 60gc\1_intrinsics_60gc.jpg")
 
 if img is not None:
     img_ud = undistort_image(img, mtx, dist, newcameramtx)

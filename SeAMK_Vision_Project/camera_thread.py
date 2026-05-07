@@ -73,19 +73,22 @@ class CameraThread(QThread):
         safe_set("BinningHorizontal", 1)
         safe_set("BinningVertical", 1)
         safe_set("GammaEnable", False) # Always disable Gamma for optimal raw color processing
-
+        safe_set("BalanceWhiteAuto", "Off")
         # --- 2. DETAILED CONFIGURATION BY CAMERA TYPE ---
+        safe_set("GevSCPSPacketSize", 8164)
+        time.sleep(0.2)
         if "hik" in vendor_name:
             # --- HIKROBOT CONFIGURATION (12MP) ---
-            fps_target = 7.0
             self.ia.num_buffers = 20 # Large buffer for 12MP images
-            
             # Bandwidth Optimization (700 Mbps)
             safe_set("DeviceLinkThroughputLimit", 87500000) 
             safe_set("GevSCPD", 300)
-            safe_set("GevSCPSPacketSize", 8164)
-
-            safe_set("BalanceWhiteAuto", "Off")
+            fps_target = 7.0
+            safe_set("ColorTransformationEnable", False)
+            try:
+                if "ColorTransformationValue" in dir(nodemap):
+                    nodemap.ColorTransformationValue.value = 0
+            except: pass
             try:
                 if "BalanceRatioSelector" in dir(nodemap):
                     nodemap.BalanceRatioSelector.value = "Red"
@@ -101,41 +104,49 @@ class CameraThread(QThread):
 
         else:
             # --- BASLER CONFIGURATION (2MP) ---
-            fps_target = 6.0
             self.ia.num_buffers = 5
-            
             # Bandwidth Optimization (100 Mbps)
             safe_set("DeviceLinkThroughputLimit", 12500000) 
             safe_set("GevSCPD", 2000)
-            safe_set("GevSCPSPacketSize", 8164)
-
+            fps_target = 6.0
             # Handle Black Level for both gm and gc models
             try:
                 if "BlackLevelSelector" in dir(nodemap):
                     nodemap.BlackLevelSelector.value = "All"
+                    target_black_level = 50 if "60gc" in model_name else 4
                 if "BlackLevelRaw" in dir(nodemap):
-                    nodemap.BlackLevelRaw.value = 4
+                    nodemap.BlackLevelRaw.value = target_black_level
                 elif "BlackLevel" in dir(nodemap):
-                    nodemap.BlackLevel.value = 4
+                    nodemap.BlackLevel.value = target_black_level
             except: pass
 
             # Lock Manual White Balance for Color models (60gc)
             if "60gc" in model_name:
-                safe_set("BalanceWhiteAuto", "Off")
+                safe_set("ColorAdjustmentEnable", False)
+                safe_set("ColorTransformationEnable", False) 
+                
+                try:
+                    # Đưa Matrix Factor về 0 theo test MVS
+                    if "ColorTransformationMatrixFactorRaw" in dir(nodemap):
+                        nodemap.ColorTransformationMatrixFactorRaw.value = 0
+                    elif "ColorTransformationMatrixFactor" in dir(nodemap):
+                        nodemap.ColorTransformationMatrixFactor.value = 0.0
+                except: pass
                 try:
                     if "BalanceRatioSelector" in dir(nodemap):
                         nodemap.BalanceRatioSelector.value = "Red"
-                        val_red = 1.35
+                        val_red = 1.2969
                         if "BalanceRatioAbs" in dir(nodemap): nodemap.BalanceRatioAbs.value = val_red
                         else: nodemap.BalanceRatio.value = val_red
 
                         nodemap.BalanceRatioSelector.value = "Blue"
-                        val_blue = 1.55
+                        val_blue = 1.4844
                         if "BalanceRatioAbs" in dir(nodemap): nodemap.BalanceRatioAbs.value = val_blue
                         else: nodemap.BalanceRatio.value = val_blue
                 except: pass
 
         # Set Frame Rate after bandwidth configuration
+        time.sleep(0.2)
         safe_set("AcquisitionFrameRateEnable", True)
         safe_set("AcquisitionFrameRate", fps_target)
         safe_set("AcquisitionFrameRateAbs", fps_target)
@@ -147,7 +158,7 @@ class CameraThread(QThread):
             while self._run_flag:
                 try:
                     # FETCH: Get raw data and copy quickly to release network buffer
-                    with self.ia.fetch(timeout=0.5) as buffer:
+                    with self.ia.fetch(timeout=2.0) as buffer:
                         if self._is_paused:
                             continue 
 
