@@ -1,7 +1,6 @@
 import numpy as np
 import cv2, os, time, json
 from PySide6.QtCore import QThread, Signal
-# Ensure the import path to your calibration_functions.py is correct
 from calibration.calibration_functions import undistort_image, get_undistort_map, fast_undistort_image
 
 class CameraThread(QThread):
@@ -28,7 +27,7 @@ class CameraThread(QThread):
         self.is_calibrated = False
         self.enable_undistort = False 
         
-        # Undistort Map Cache (CPU Optimization)
+        # Cache for Undistort Map (CPU Optimization)
         self.mapx = None
         self.mapy = None
 
@@ -48,65 +47,107 @@ class CameraThread(QThread):
         
         vendor_name = str(self.info.vendor).lower()
         model_name = str(self.info.model).lower()
-        fps_target = 5.0 
 
-        # --- SAFE PARAMETER SETTER (Robust against cable disconnects) ---
+        # --- SAFE PARAMETER SETTER FUNCTION ---
         def safe_set(node_name, value):
             if node_name in dir(nodemap):
                 try:
                     node = getattr(nodemap, node_name)
-                    # Handle Enumeration nodes (like On/Off)
-                    if hasattr(node, 'selectors') and isinstance(value, bool):
-                        node.value = "On" if value else "Off"
+                    if not node.is_writable(): 
+                        return
+                    
+                    if hasattr(node, 'selectors'):
+                        if isinstance(value, bool):
+                            node.value = "On" if value else "Off"
+                        else:
+                            try: node.value = value
+                            except: node.value = str(value)
                     else:
                         node.value = value
                 except:
                     pass
 
-        # 1. BASIC INITIALIZATION
+        # --- 1. BASIC INITIALIZATION (Common) ---
         safe_set("ExposureAuto", "Off")
         safe_set("GainAuto", "Off")
         safe_set("BinningHorizontal", 1)
         safe_set("BinningVertical", 1)
-        
-        # Set FPS to 5.0
+        safe_set("GammaEnable", False) # Always disable Gamma for optimal raw color processing
+
+        # --- 2. DETAILED CONFIGURATION BY CAMERA TYPE ---
+        if "hik" in vendor_name:
+            # --- HIKROBOT CONFIGURATION (12MP) ---
+            fps_target = 7.0
+            self.ia.num_buffers = 20 # Large buffer for 12MP images
+            
+            # Bandwidth Optimization (700 Mbps)
+            safe_set("DeviceLinkThroughputLimit", 87500000) 
+            safe_set("GevSCPD", 300)
+            safe_set("GevSCPSPacketSize", 8164)
+
+            safe_set("BalanceWhiteAuto", "Off")
+            try:
+                if "BalanceRatioSelector" in dir(nodemap):
+                    nodemap.BalanceRatioSelector.value = "Red"
+                    nodemap.BalanceRatio.value = 1380
+                    nodemap.BalanceRatioSelector.value = "Blue"
+                    nodemap.BalanceRatio.value = 2100
+                
+                if "BlackLevelSelector" in dir(nodemap):
+                    nodemap.BlackLevelSelector.value = "All"
+                if "BlackLevel" in dir(nodemap):
+                    nodemap.BlackLevel.value = 200 # Increase Black Level for cleaner black background
+            except: pass
+
+        else:
+            # --- BASLER CONFIGURATION (2MP) ---
+            fps_target = 6.0
+            self.ia.num_buffers = 5
+            
+            # Bandwidth Optimization (100 Mbps)
+            safe_set("DeviceLinkThroughputLimit", 12500000) 
+            safe_set("GevSCPD", 2000)
+            safe_set("GevSCPSPacketSize", 8164)
+
+            # Handle Black Level for both gm and gc models
+            try:
+                if "BlackLevelSelector" in dir(nodemap):
+                    nodemap.BlackLevelSelector.value = "All"
+                if "BlackLevelRaw" in dir(nodemap):
+                    nodemap.BlackLevelRaw.value = 4
+                elif "BlackLevel" in dir(nodemap):
+                    nodemap.BlackLevel.value = 4
+            except: pass
+
+            # Lock Manual White Balance for Color models (60gc)
+            if "60gc" in model_name:
+                safe_set("BalanceWhiteAuto", "Off")
+                try:
+                    if "BalanceRatioSelector" in dir(nodemap):
+                        nodemap.BalanceRatioSelector.value = "Red"
+                        val_red = 1.35
+                        if "BalanceRatioAbs" in dir(nodemap): nodemap.BalanceRatioAbs.value = val_red
+                        else: nodemap.BalanceRatio.value = val_red
+
+                        nodemap.BalanceRatioSelector.value = "Blue"
+                        val_blue = 1.55
+                        if "BalanceRatioAbs" in dir(nodemap): nodemap.BalanceRatioAbs.value = val_blue
+                        else: nodemap.BalanceRatio.value = val_blue
+                except: pass
+
+        # Set Frame Rate after bandwidth configuration
         safe_set("AcquisitionFrameRateEnable", True)
         safe_set("AcquisitionFrameRate", fps_target)
         safe_set("AcquisitionFrameRateAbs", fps_target)
-
-        # 2. BANDWIDTH OPTIMIZATION
-        # Prioritize DeviceLinkThroughputLimit (Equivalent to Bandwidth Adjust in MVS)
-        if "hik" in vendor_name:
-            safe_set("DeviceLinkThroughputLimit", 500000000) # 500 Mbps for Hik 12MP
-            safe_set("GevSCPD", 7000)                        # Optimal Packet Delay for Hik
-            safe_set("GevSCPSPacketSize", 8164)              # Jumbo Frame
-            self.ia.num_buffers = 15                         # Large buffer for heavy images
-        else:
-            # Basler 1.9MP
-            safe_set("DeviceLinkThroughputLimit", 100000000) # 100 Mbps for Basler
-            safe_set("GevSCPD", 10000)                       # Optimal Packet Delay for Basler
-            safe_set("GevSCPSPacketSize", 1500)
-            self.ia.num_buffers = 5
-
         safe_set("GevHeartbeatTimeout", 5000)
 
-        # 3. ACQUISITION AND IMAGE PROCESSING LOOP
+        # --- 3. ACQUISITION AND IMAGE PROCESSING LOOP ---
         try:
-            try:
-                if not self.ia.is_acquiring(): 
-                    self.ia.remote_device.node_map.BinningHorizontal.value = "X2"
-                    self.ia.remote_device.node_map.BinningVertical.value = "X2"
-            except:
-                try:
-                    self.ia.remote_device.node_map.BinningHorizontal.value = 2
-                except Exception as e:
-                    print(f"Cannot set Binning: {e}")
-                    
             self.ia.start()
             while self._run_flag:
                 try:
-                    # FETCH: Get raw data and exit quickly to release Buffer
-                    with self.ia.fetch(timeout=3.0) as buffer:
+                    # FETCH: Get raw data and copy quickly to release network buffer
+                    with self.ia.fetch(timeout=0.5) as buffer:
                         if self._is_paused:
                             continue 
 
@@ -114,7 +155,7 @@ class CameraThread(QThread):
                         component = payload.components[0]
                         w, h = component.width, component.height
                         data_format = component.data_format
-                        raw_data = component.data.copy() # Copy to process outside the 'with' block
+                        raw_data = component.data.copy() 
                         bytes_per_pixel = len(raw_data) // (w * h)
 
                 except Exception as e:
@@ -122,9 +163,9 @@ class CameraThread(QThread):
                     time.sleep(0.05)
                     continue 
 
-                # IMAGE PROCESSING (Outside 'with' block to prevent network congestion)
+                # IMAGE PROCESSING (Outside 'with' block to avoid blocking packet reception thread)
                 try:
-                    # Accurate color decoding for different Camera types
+                    # Decode color based on Camera and pixel format
                     if "hik" in vendor_name and bytes_per_pixel == 1:
                         raw = raw_data.reshape(h, w)
                         if self.config.get('color_mode') == "Grayscale":
@@ -150,26 +191,22 @@ class CameraThread(QThread):
 
                     self.last_full_frame = full_img 
                     
-                    # Apply high-speed Calibration Undistort
+                    # Apply Undistort if calibration file exists
                     if self.enable_undistort and self.is_calibrated:
                         if self.mapx is None or self.mapy is None:
-                            # Initialize undistort maps once
                             self.mapx, self.mapy = get_undistort_map(w, h, self.calib_mtx, self.calib_dist, self.calib_newcameramtx)
                         full_img = fast_undistort_image(full_img, self.mapx, self.mapy)
-
-                    # Convert color for UI display
-                    if self.config.get('color_mode') == "Grayscale" and len(full_img.shape) == 3:
-                        full_img = cv2.cvtColor(full_img, cv2.COLOR_BGR2GRAY)
 
                     # Write Video if Recording is enabled
                     if self.is_recording and self.video_writer:
                         rec_frame = full_img if len(full_img.shape) == 3 else cv2.cvtColor(full_img, cv2.COLOR_GRAY2BGR)
                         self.video_writer.write(rec_frame)
                         
-                    # Prepare Preview image for UI
+                    # Prepare Preview image for UI (Signal)
                     if self.emit_full_res:
                         preview_rgb = cv2.cvtColor(full_img, cv2.COLOR_BGR2RGB) if len(full_img.shape) == 3 else cv2.cvtColor(full_img, cv2.COLOR_GRAY2RGB)
                     else:
+                        # Use INTER_NEAREST for ultra-fast resizing for preview
                         preview_small = cv2.resize(full_img, (400, 300), interpolation=cv2.INTER_NEAREST)
                         preview_rgb = cv2.cvtColor(preview_small, cv2.COLOR_BGR2RGB) if len(preview_small.shape) == 3 else cv2.cvtColor(preview_small, cv2.COLOR_GRAY2RGB)
                 
@@ -213,12 +250,12 @@ class CameraThread(QThread):
                 self.calib_dist = np.array(data['dist_coeffs'])
                 self.calib_newcameramtx = np.array(data.get('new_camera_matrix', data['camera_matrix']))
             self.is_calibrated = True
-            self.mapx = None # Reset maps to recalculate based on new file
+            self.mapx = None 
             self.mapy = None
-            print(f"✅ Calibration file loaded for {self.info.model}")
+            print(f"Calibration file loaded for {self.info.model}")
             return True
         except Exception as e:
-            print(f"❌ JSON Load Error: {e}")
+            print(f"JSON Load Error: {e}")
             self.is_calibrated = False
             return False
 

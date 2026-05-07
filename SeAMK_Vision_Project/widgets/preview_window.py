@@ -131,15 +131,15 @@ class PreviewWindow(QGroupBox):
                 self.global_dir_signal.emit(self.config['save_dir'])
 
     def open_fullscreen(self):
-        # Tạo cửa sổ rời với tiêu đề là tên Camera
+        self.focus_mode_signal.emit(self, True) # True = Focus Mode ON
+        
         self.fs_viewer = FullscreenViewer(parent=None, title=f"Focus: {self.info.model}")
         
         if hasattr(self, 'camera_thread') and self.camera_thread is not None:
             self.camera_thread.set_full_res(True)
             self.camera_thread.change_pixmap_signal.connect(self.update_image_to_viewer, Qt.QueuedConnection)
             self.fs_viewer.finished.connect(self.close_fullscreen)
-        
-        self.fs_viewer.show() 
+        self.fs_viewer.show()
 
     def update_image_to_viewer(self, img_data):
         if hasattr(self, 'fs_viewer') and self.fs_viewer is not None:
@@ -151,12 +151,12 @@ class PreviewWindow(QGroupBox):
 
     def close_fullscreen(self):
         if hasattr(self, 'camera_thread') and self.camera_thread is not None:
+            self.camera_thread.set_full_res(False)
             try:
                 self.camera_thread.change_pixmap_signal.disconnect(self.update_image_to_viewer)
-            except Exception:
+            except:
                 pass
-            self.camera_thread.set_full_res(False)
-
+        self.focus_mode_signal.emit(self, False)
         if hasattr(self, 'fs_viewer') and self.fs_viewer is not None:
             self.fs_viewer.close()
             self.fs_viewer = None
@@ -251,7 +251,7 @@ class PreviewWindow(QGroupBox):
                 
                 self.chk_undistort.setEnabled(True)
                 self.chk_undistort.setChecked(True)
-                self.btn_load_calib.setText("Calib Loaded ✅")
+                self.btn_load_calib.setText("Calib Loaded")
                 self.btn_load_calib.setStyleSheet("color: #2E7D32; font-weight: bold;")
                 QMessageBox.information(self, "Success", f"Calibration loaded and saved for {self.info.model}!")
             else:

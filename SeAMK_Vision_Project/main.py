@@ -103,8 +103,10 @@ class MainApp(QMainWindow):
             if p != active_preview: 
                 if is_focus:
                     t.pause_camera() 
+                    p.image_label.setStyleSheet("background-color: black; opacity: 0.5; border: 2px solid red;")
                 else:
                     t.resume_camera()
+                    p.image_label.setStyleSheet("background-color: black; border: 1px solid #333;")
 
     # --- Synchronized functions ---
     def toggle_sync_mode(self, is_synced):

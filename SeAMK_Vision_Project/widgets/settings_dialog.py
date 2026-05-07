@@ -162,7 +162,7 @@ class SettingsDialog(QDialog):
                         if "BinningHorizontal" in nodes: nodemap.BinningHorizontal.value = val
                         if "BinningVertical" in nodes: nodemap.BinningVertical.value = val
                 except Exception as e:
-                    print(f"Skipping Binning application: {e}")
+                    pass
             
         except Exception as e:
             print(f"Settings System Error: {e}")
